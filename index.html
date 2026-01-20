@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Můj Tlak - Live Dashboard</title>
+    
+    <script src="https://cdn.jsdelivr.net/npm/luxon@3.4.4/build/global/luxon.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-luxon@1.3.1"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+
+    <style>
+        body { font-family: -apple-system, system-ui, sans-serif; margin: 0; background-color: #f0f2f5; padding: 20px; color: #1c1e21; }
+        .container { max-width: 1200px; margin: auto; background: white; padding: 25px; border-radius: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+        header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; gap: 15px; flex-wrap: wrap; }
+        h1 { margin: 0; font-size: 1.6rem; color: #1a73e8; }
+        .btn-input { background: #1a73e8; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: 600; transition: background 0.2s; }
+        .btn-input:hover { background: #1557b0; }
+        #chart-wrapper { position: relative; height: 75vh; width: 100%; min-height: 400px; }
+        .loader { text-align: center; padding: 40px; font-style: italic; color: #65676b; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <h1>Deník krevního tlaku</h1>
+        <a href="https://forms.gle/J2LQf3o1JezrUJqi9" target="_blank" class="btn-input">Zapsat měření</a>
+    </header>
+
+    <div id="chart-wrapper">
+        <div id="loading-msg" class="loader">Načítám čerstvá data z Google Tabulek...</div>
+        <canvas id="bpChart"></canvas>
+    </div>
+</div>
+
+<script>
+    // --- KONFIGURACE ---
+    const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQBkUqdwZyzKHPbroYVzqol6YEHW9qGg8cIXTs43Y-x6ypklE_PNZYmQrYCdZihqq9T09_t-GlZDGHt/pub?gid=110727992&single=true&output=csv';
+
+    async function fetchData() {
+        Papa.parse(CSV_URL, {
+            download: true,
+            header: true,
+            dynamicTyping: true,
+            skipEmptyLines: true,
+            complete: function(results) {
+                document.getElementById('loading-msg').style.display = 'none';
+                renderChart(results.data);
+            },
+            error: function() {
+                document.getElementById('loading-msg').innerText = "Chyba: Nepodařilo se spojit s Google Tabulkou.";
+            }
+        });
+    }
+
+    function renderChart(rawData) {
+        const ctx = document.getElementById('bpChart').getContext('2d');
+        
+        // Seřazení dat podle času (aby graf nebyl cik-cak)
+        const sortedData = rawData.sort((a, b) => new Date(a.date) - new Date(b.date));
+
+        new Chart(ctx, {
+            data: {
+                datasets: [
+                    {
+                        type: 'line',
+                        label: 'Systolický (mmHg)',
+                        data: sortedData.map(m => ({ x: m.date, y: m.bp_systolic })),
+                        borderColor: '#d93025',
+                        backgroundColor: '#d93025',
+                        borderWidth: 2,
+                        tension: 0.3,
+                        pointRadius: 3
+                    },
+                    {
+                        type: 'line',
+                        label: 'Diastolický (mmHg)',
+                        data: sortedData.map(m => ({ x: m.date, y: m.bp_diastolic })),
+                        borderColor: '#1a73e8',
+                        backgroundColor: '#1a73e8',
+                        borderWidth: 2,
+                        tension: 0.3,
+                        pointRadius: 3
+                    },
+                    {
+                        type: 'line',
+                        label: 'Tep',
+                        data: sortedData.map(m => ({ x: m.date, y: m.pulse })),
+                        borderColor: '#188038',
+                        backgroundColor: '#188038',
+                        borderWidth: 1.5,
+                        borderDash: [4, 4],
+                        tension: 0.3,
+                        pointRadius: 2
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: {
+                        type: 'time',
+                        time: {
+                            unit: 'day',
+                            displayFormats: { day: 'd. M.' },
+                            tooltipFormat: 'dd. MM. yyyy HH:mm'
+                        },
+                        title: { display: true, text: 'Čas měření' }
+                    },
+                    y: {
+                        beginAtZero: false,
+                        suggestedMin: 50,
+                        title: { display: true, text: 'Hodnoty' }
+                    }
+                },
+                plugins: {
+                    annotation: {
+                        annotations: {
+                            sysHigh: {
+                                type: 'line',
+                                yMin: 130, yMax: 130,
+                                borderColor: 'rgba(217, 48, 37, 0.3)',
+                                borderWidth: 2, borderDash: [5, 5]
+                            },
+                            diaHigh: {
+                                type: 'line',
+                                yMin: 80, yMax: 80,
+                                borderColor: 'rgba(26, 115, 232, 0.3)',
+                                borderWidth: 2, borderDash: [5, 5]
+                            }
+                        }
+                    },
+                    tooltip: { mode: 'index', intersect: false }
+                }
+            }
+        });
+    }
+
+    fetchData();
+</script>
+
+</body>
+</html>
