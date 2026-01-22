@@ -37,64 +37,71 @@
 </div>
 
 <script>
-    // --- KONFIGURACE ---
-    const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQBkUqdwZyzKHPbroYVzqol6YEHW9qGg8cIXTs43Y-x6ypklE_PNZYmQrYCdZihqq9T09_t-GlZDGHt/pub?gid=110727992&single=true&output=csv';
+    const MY_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQBkUqdwZyzKHPbroYVzqol6YEHW9qGg8cIXTs43Y-x6ypklE_PNZYmQrYCdZihqq9T09_t-GlZDGHt/pub?gid=110727992&single=true&output=csv'; // Nezapomeňte vložit svůj odkaz
 
-    async function fetchData() {
-        Papa.parse(CSV_URL, {
+    async function loadData() {
+        console.log("Start stahování...");
+        Papa.parse(MY_CSV_URL, {
             download: true,
             header: true,
             dynamicTyping: true,
             skipEmptyLines: true,
             complete: function(results) {
-                document.getElementById('loading-msg').style.display = 'none';
-                renderChart(results.data);
+                console.log("Data stažena, počet řádků:", results.data.length);
+                if (results.data.length > 0) {
+                    // TOTO NÁM UKÁŽE, CO GOOGLE REÁLNĚ POSÍLÁ
+                    alert("První řádek dat: " + JSON.stringify(results.data[0]));
+                    drawChart(results.data);
+                } else {
+                    alert("Chyba: Google poslal prázdnou tabulku!");
+                }
             },
-            error: function() {
-                document.getElementById('loading-msg').innerText = "Chyba: Nepodařilo se spojit s Google Tabulkou.";
+            error: function(err) {
+                alert("Chyba při stahování CSV: " + err);
             }
         });
     }
 
-    function renderChart(rawData) {
+    function getValue(row, keywords) {
+        const key = Object.keys(row).find(k => 
+            keywords.some(kw => k.toLowerCase().includes(kw.toLowerCase()))
+        );
+        return row[key];
+    }
+
+    function drawChart(rawData) {
         const ctx = document.getElementById('bpChart').getContext('2d');
         
-        // Seřazení dat podle času (aby graf nebyl cik-cak)
-        const sortedData = rawData.sort((a, b) => new Date(a.date) - new Date(b.date));
+        // Filtrujeme řádky, které nemají datum nebo tlak
+        const validData = rawData.filter(d => getValue(d, ['date', 'čas']) && getValue(d, ['sys']));
+
+        if (validData.length === 0) {
+            alert("V tabulce jsou data, ale kód v nich nenašel sloupce pro 'datum' nebo 'systol'. Zkontrolujte záhlaví tabulky.");
+            return;
+        }
+
+        const data = validData.sort((a, b) => {
+            return new Date(getValue(a, ['date', 'čas'])) - new Date(getValue(b, ['date', 'čas']));
+        });
+
+        document.getElementById('msg').style.display = 'none';
 
         new Chart(ctx, {
             data: {
                 datasets: [
                     {
                         type: 'line',
-                        label: 'Systolický (mmHg)',
-                        data: sortedData.map(m => ({ x: m.date, y: m.bp_systolic })),
+                        label: 'Systolický',
+                        data: data.map(d => ({ x: getValue(d, ['date', 'čas']), y: getValue(d, ['sys']) })),
                         borderColor: '#d93025',
-                        backgroundColor: '#d93025',
-                        borderWidth: 2,
-                        tension: 0.3,
-                        pointRadius: 3
+                        tension: 0.3
                     },
                     {
                         type: 'line',
-                        label: 'Diastolický (mmHg)',
-                        data: sortedData.map(m => ({ x: m.date, y: m.bp_diastolic })),
+                        label: 'Diastolický',
+                        data: data.map(d => ({ x: getValue(d, ['date', 'čas']), y: getValue(d, ['dia']) })),
                         borderColor: '#1a73e8',
-                        backgroundColor: '#1a73e8',
-                        borderWidth: 2,
-                        tension: 0.3,
-                        pointRadius: 3
-                    },
-                    {
-                        type: 'line',
-                        label: 'Tep',
-                        data: sortedData.map(m => ({ x: m.date, y: m.pulse })),
-                        borderColor: '#188038',
-                        backgroundColor: '#188038',
-                        borderWidth: 1.5,
-                        borderDash: [4, 4],
-                        tension: 0.3,
-                        pointRadius: 2
+                        tension: 0.3
                     }
                 ]
             },
@@ -102,45 +109,14 @@
                 responsive: true,
                 maintainAspectRatio: false,
                 scales: {
-                    x: {
-                        type: 'time',
-                        time: {
-                            unit: 'day',
-                            displayFormats: { day: 'd. M.' },
-                            tooltipFormat: 'dd. MM. yyyy HH:mm'
-                        },
-                        title: { display: true, text: 'Čas měření' }
-                    },
-                    y: {
-                        beginAtZero: false,
-                        suggestedMin: 50,
-                        title: { display: true, text: 'Hodnoty' }
-                    }
-                },
-                plugins: {
-                    annotation: {
-                        annotations: {
-                            sysHigh: {
-                                type: 'line',
-                                yMin: 130, yMax: 130,
-                                borderColor: 'rgba(217, 48, 37, 0.3)',
-                                borderWidth: 2, borderDash: [5, 5]
-                            },
-                            diaHigh: {
-                                type: 'line',
-                                yMin: 80, yMax: 80,
-                                borderColor: 'rgba(26, 115, 232, 0.3)',
-                                borderWidth: 2, borderDash: [5, 5]
-                            }
-                        }
-                    },
-                    tooltip: { mode: 'index', intersect: false }
+                    x: { type: 'time', time: { unit: 'day' } },
+                    y: { suggestedMin: 40 }
                 }
             }
         });
     }
 
-    fetchData();
+    loadData();
 </script>
 
 </body>
