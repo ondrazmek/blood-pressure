@@ -68,14 +68,34 @@
 
     function drawChart(rawData) {
         const infoEl = document.getElementById('loading-info');
-        if (infoEl) infoEl.style.display = 'none'; // Schováme nápis, pokud existuje
+        if (infoEl) infoEl.style.display = 'none';
 
         const ctx = document.getElementById('bpChart').getContext('2d');
         
-        // Seřazení dat
-        const sortedData = rawData.filter(d => getVal(d, ['razítko', 'date', 'čas'])).sort((a, b) => {
-            return new Date(getVal(a, ['razítko', 'date', 'čas'])) - new Date(getVal(b, ['razítko', 'date', 'čas']));
-        });
+        // Funkce pro převod českého data na formát, kterému graf rozumí
+        function parseDate(dateStr) {
+            if (!dateStr) return null;
+            // Zkusí Luxon (pro formát 20.1.2026 20:41:07)
+            const luxonDate = luxon.DateTime.fromFormat(String(dateStr), 'd.M.yyyy H:mm:ss');
+            if (luxonDate.isValid) return luxonDate.toJSDate();
+            // Zkusí standardní převod (pro formát 2026-01-20)
+            return new Date(dateStr);
+        }
+
+        // Seřazení a vyčištění dat
+        const sortedData = rawData
+            .filter(d => getVal(d, ['razítko', 'date', 'čas']))
+            .map(d => ({
+                ...d,
+                parsedDate: parseDate(getVal(d, ['razítko', 'date', 'čas']))
+            }))
+            .filter(d => d.parsedDate && !isNaN(d.parsedDate))
+            .sort((a, b) => a.parsedDate - b.parsedDate);
+
+        if (sortedData.length === 0) {
+            console.error("Nepodařilo se zpracovat žádná data. Zkontrolujte formát data.");
+            return;
+        }
 
         new Chart(ctx, {
             data: {
@@ -83,7 +103,7 @@
                     {
                         type: 'line',
                         label: 'Systolický',
-                        data: sortedData.map(d => ({ x: getVal(d, ['razítko', 'date', 'čas']), y: getVal(d, ['systol']) })),
+                        data: sortedData.map(d => ({ x: d.parsedDate, y: getVal(d, ['systol']) })),
                         borderColor: '#d93025',
                         backgroundColor: '#d93025',
                         tension: 0.3
@@ -91,7 +111,7 @@
                     {
                         type: 'line',
                         label: 'Diastolický',
-                        data: sortedData.map(d => ({ x: getVal(d, ['razítko', 'date', 'čas']), y: getVal(d, ['diastol']) })),
+                        data: sortedData.map(d => ({ x: d.parsedDate, y: getVal(d, ['diastol']) })),
                         borderColor: '#1a73e8',
                         backgroundColor: '#1a73e8',
                         tension: 0.3
@@ -99,7 +119,7 @@
                     {
                         type: 'line',
                         label: 'Tep',
-                        data: sortedData.map(d => ({ x: getVal(d, ['razítko', 'date', 'čas']), y: getVal(d, ['tep', 'pulse']) })),
+                        data: sortedData.map(d => ({ x: d.parsedDate, y: getVal(d, ['tep', 'pulse']) })),
                         borderColor: '#188038',
                         borderDash: [5, 5],
                         tension: 0.3
@@ -112,17 +132,13 @@
                 scales: {
                     x: { 
                         type: 'time', 
-                        time: { unit: 'day', displayFormats: { day: 'd.M.' } } 
+                        time: { 
+                            unit: 'day',
+                            displayFormats: { day: 'd.M.' },
+                            tooltipFormat: 'dd.MM.yyyy HH:mm'
+                        } 
                     },
                     y: { suggestedMin: 40 }
-                },
-                plugins: {
-                    annotation: {
-                        annotations: {
-                            sysHigh: { type: 'line', yMin: 130, yMax: 130, borderColor: 'rgba(217, 48, 37, 0.2)', borderWidth: 2 },
-                            diaHigh: { type: 'line', yMin: 80, yMax: 80, borderColor: 'rgba(26, 115, 232, 0.2)', borderWidth: 2 }
-                        }
-                    }
                 }
             }
         });
