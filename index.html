@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Můj Tlak - Live Dashboard</title>
+    <title>Můj Tlak & Tep - Aktuální data</title>
     
     <script src="https://cdn.jsdelivr.net/npm/luxon@3.4.4/build/global/luxon.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -12,62 +12,38 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 
     <style>
-        body { font-family: -apple-system, system-ui, sans-serif; margin: 0; background-color: #f0f2f5; padding: 20px; color: #1c1e21; }
-        .container { max-width: 1300px; margin: auto; background: white; padding: 25px; border-radius: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
-        header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; gap: 15px; flex-wrap: wrap; }
-        h1 { margin: 0; font-size: 1.6rem; color: #1a73e8; }
-        .btn-input { background: #1a73e8; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: 600; }
-        #chart-wrapper { position: relative; height: 75vh; width: 100%; min-height: 450px; }
-        .loader { text-align: center; padding: 40px; font-style: italic; color: #65676b; }
+        body { font-family: -apple-system, system-ui, sans-serif; margin: 0; background-color: #f0f2f5; padding: 15px; }
+        .container { max-width: 1200px; margin: auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+        header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        h1 { margin: 0; font-size: 1.4rem; color: #1a73e8; }
+        .btn-input { background: #1a73e8; color: white; padding: 10px 20px; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 0.9rem; }
+        #chart-wrapper { position: relative; height: 70vh; width: 100%; }
+        .loader { text-align: center; padding: 50px; color: #666; }
     </style>
 </head>
 <body>
 
 <div class="container">
     <header>
-        <h1>Deník krevního tlaku</h1>
-        <a href="https://forms.gle/UEQjVrcUwoAUQ4EP7" target="_blank" id="form-link" class="btn-input">Zapsat nové měření</a>
+        <h1>Deník měření (Aktuální)</h1>
+        <a href="https://forms.gle/UEQjVrcUwoAUQ4EP7" target="_blank" class="btn-input">Zapsat měření</a>
     </header>
 
     <div id="chart-wrapper">
-        <div id="loading-info" class="loader">Načítám čerstvá data z Google Tabulek...</div>
+        <div id="loading-info" class="loader">Načítám čerstvá data...</div>
         <canvas id="bpChart"></canvas>
     </div>
 </div>
 
 <script>
-    // --- 1. SEM VLOŽTE SVŮJ ODKAZ Z GOOGLE TABULKY (output=csv) ---
+    // --- SEM VLOŽTE ODKAZ Z GOOGLE TABULKY (output=csv) ---
     const MY_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQBkUqdwZyzKHPbroYVzqol6YEHW9qGg8cIXTs43Y-x6ypklE_PNZYmQrYCdZihqq9T09_t-GlZDGHt/pub?gid=110727992&single=true&output=csv';
 
-    // Pomocná funkce pro hledání sloupců (ignoruje diakritiku)
     function getVal(row, keys) {
         const foundKey = Object.keys(row).find(k => 
             keys.some(kw => k.toLowerCase().includes(kw.toLowerCase()))
         );
         return row[foundKey];
-    }
-
-    // Funkce pro chytré zpracování data a času
-    function parseAnyDate(dateStr) {
-        if (!dateStr) return null;
-        let d = String(dateStr).trim();
-
-        // Zkusíme český formát s časem (20.1.2026 20:41:07)
-        const czDateTime = luxon.DateTime.fromFormat(d, 'd.M.yyyy H:mm:ss');
-        if (czDateTime.isValid) return czDateTime.toJSDate();
-
-        // Zkusíme český formát bez sekund (20.1.2026 20:41)
-        const czDateTimeShort = luxon.DateTime.fromFormat(d, 'd.M.yyyy H:mm');
-        if (czDateTimeShort.isValid) return czDateTimeShort.toJSDate();
-
-        // Zkusíme pouze datum (20.1.2026 nebo 2026-01-20)
-        const dateOnly = luxon.DateTime.fromFormat(d, 'd.M.yyyy');
-        if (dateOnly.isValid) return dateOnly.toJSDate();
-
-        const isoDate = new Date(d);
-        if (!isNaN(isoDate.getTime())) return isoDate;
-
-        return null;
     }
 
     async function loadData() {
@@ -80,62 +56,55 @@
                 if (results.data && results.data.length > 0) {
                     drawChart(results.data);
                 } else {
-                    document.getElementById('loading-info').innerText = "Tabulka je prázdná.";
+                    document.getElementById('loading-info').innerText = "Zatím žádná data. Zadejte první měření!";
                 }
-            },
-            error: function() {
-                document.getElementById('loading-info').innerText = "Chyba při spojení s Googlem.";
             }
         });
     }
 
     function drawChart(rawData) {
-        const infoEl = document.getElementById('loading-info');
-        if (infoEl) infoEl.style.display = 'none';
+        if (document.getElementById('loading-info')) document.getElementById('loading-info').style.display = 'none';
 
         const ctx = document.getElementById('bpChart').getContext('2d');
         
-        // Zpracování dat
         const data = rawData
             .map(d => ({
                 ...d,
-                xDate: parseAnyDate(getVal(d, ['razítko', 'date', 'čas']))
+                xDate: luxon.DateTime.fromFormat(String(getVal(d, ['razítko', 'date', 'čas'])), 'd.M.yyyy H:mm:ss').toJSDate()
             }))
-            .filter(d => d.xDate !== null)
+            .filter(d => !isNaN(d.xDate))
             .sort((a, b) => a.xDate - b.xDate);
 
         new Chart(ctx, {
             data: {
                 datasets: [
                     {
-                        type: 'line',
                         label: 'Systolický',
                         data: data.map(d => ({ x: d.xDate, y: getVal(d, ['systol']) })),
                         borderColor: '#d93025',
                         backgroundColor: '#d93025',
-                        borderWidth: 2,
-                        tension: 0.2,
-                        pointRadius: 4
+                        borderWidth: 3,
+                        pointRadius: 5,
+                        tension: 0.2
                     },
                     {
-                        type: 'line',
                         label: 'Diastolický',
                         data: data.map(d => ({ x: d.xDate, y: getVal(d, ['diastol']) })),
                         borderColor: '#1a73e8',
                         backgroundColor: '#1a73e8',
-                        borderWidth: 2,
-                        tension: 0.2,
-                        pointRadius: 4
+                        borderWidth: 3,
+                        pointRadius: 5,
+                        tension: 0.2
                     },
                     {
-                        type: 'line',
                         label: 'Tep',
                         data: data.map(d => ({ x: d.xDate, y: getVal(d, ['tep', 'pulse']) })),
                         borderColor: '#188038',
+                        backgroundColor: '#188038',
                         borderDash: [5, 5],
-                        borderWidth: 1.5,
-                        tension: 0.2,
-                        pointRadius: 2
+                        borderWidth: 2,
+                        pointRadius: 3,
+                        tension: 0.2
                     }
                 ]
             },
@@ -146,31 +115,29 @@
                     x: { 
                         type: 'time', 
                         time: { 
-                            tooltipFormat: 'dd. MM. yyyy HH:mm',
+                            unit: 'day',
+                            tooltipFormat: 'dd.MM.yyyy HH:mm',
                             displayFormats: {
-                                hour: 'HH:mm',
-                                day: 'd. M.',
-                                month: 'MM/yyyy'
+                                day: 'ccc d.M.', // Zobrazí např. "Po 20.1."
+                                hour: 'HH:mm'
                             }
                         },
-                        title: { display: true, text: 'Čas měření' }
+                        title: { display: true, text: 'Den a čas měření' }
                     },
                     y: { 
-                        suggestedMin: 40,
-                        title: { display: true, text: 'Hodnoty (mmHg / Tep)' }
+                        suggestedMin: 50,
+                        suggestedMax: 150,
+                        title: { display: true, text: 'Hodnoty' }
                     }
                 },
                 plugins: {
                     annotation: {
                         annotations: {
-                            sysHigh: { type: 'line', yMin: 130, yMax: 130, borderColor: 'rgba(217, 48, 37, 0.2)', borderWidth: 2, borderDash: [5, 5] },
-                            diaHigh: { type: 'line', yMin: 80, yMax: 80, borderColor: 'rgba(26, 115, 232, 0.2)', borderWidth: 2, borderDash: [5, 5] }
+                            sysHigh: { type: 'line', yMin: 130, yMax: 130, borderColor: 'rgba(217,48,37,0.2)', borderWidth: 2 },
+                            diaHigh: { type: 'line', yMin: 80, yMax: 80, borderColor: 'rgba(26,115,232,0.2)', borderWidth: 2 }
                         }
                     },
-                    tooltip: {
-                        mode: 'index',
-                        intersect: false
-                    }
+                    tooltip: { mode: 'index', intersect: false }
                 }
             }
         });
