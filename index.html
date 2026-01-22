@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Můj Tlak & Tep - Aktuální data</title>
+    <title>Můj Tlak & Tep</title>
     
     <script src="https://cdn.jsdelivr.net/npm/luxon@3.4.4/build/global/luxon.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -12,12 +12,12 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 
     <style>
-        body { font-family: -apple-system, system-ui, sans-serif; margin: 0; background-color: #f0f2f5; padding: 15px; }
+        body { font-family: -apple-system, sans-serif; margin: 0; background-color: #f0f2f5; padding: 15px; }
         .container { max-width: 1200px; margin: auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
         header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
-        h1 { margin: 0; font-size: 1.4rem; color: #1a73e8; }
-        .btn-input { background: #1a73e8; color: white; padding: 10px 20px; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 0.9rem; }
-        #chart-wrapper { position: relative; height: 70vh; width: 100%; }
+        h1 { margin: 0; font-size: 1.3rem; color: #1a73e8; }
+        .btn-input { background: #1a73e8; color: white; padding: 10px 18px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 0.85rem; }
+        #chart-wrapper { position: relative; height: 70vh; width: 100%; min-height: 400px; }
         .loader { text-align: center; padding: 50px; color: #666; }
     </style>
 </head>
@@ -25,18 +25,18 @@
 
 <div class="container">
     <header>
-        <h1>Deník měření (Aktuální)</h1>
+        <h1>Deník měření</h1>
         <a href="https://forms.gle/UEQjVrcUwoAUQ4EP7" target="_blank" class="btn-input">Zapsat měření</a>
     </header>
 
     <div id="chart-wrapper">
-        <div id="loading-info" class="loader">Načítám čerstvá data...</div>
+        <div id="loading-info" class="loader">Načítám data...</div>
         <canvas id="bpChart"></canvas>
     </div>
 </div>
 
 <script>
-    // --- SEM VLOŽTE ODKAZ Z GOOGLE TABULKY (output=csv) ---
+    // --- 1. SEM VLOŽTE ODKAZ Z GOOGLE TABULKY (output=csv) ---
     const MY_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQBkUqdwZyzKHPbroYVzqol6YEHW9qGg8cIXTs43Y-x6ypklE_PNZYmQrYCdZihqq9T09_t-GlZDGHt/pub?gid=110727992&single=true&output=csv';
 
     function getVal(row, keys) {
@@ -56,7 +56,7 @@
                 if (results.data && results.data.length > 0) {
                     drawChart(results.data);
                 } else {
-                    document.getElementById('loading-info').innerText = "Zatím žádná data. Zadejte první měření!";
+                    document.getElementById('loading-info').innerText = "Zatím žádná data.";
                 }
             }
         });
@@ -68,14 +68,18 @@
         const ctx = document.getElementById('bpChart').getContext('2d');
         
         const data = rawData
-            .map(d => ({
-                ...d,
-                xDate: luxon.DateTime.fromFormat(String(getVal(d, ['razítko', 'date', 'čas'])), 'd.M.yyyy H:mm:ss').toJSDate()
-            }))
-            .filter(d => !isNaN(d.xDate))
+            .map(d => {
+                const dateStr = String(getVal(d, ['razítko', 'date', 'čas']));
+                return {
+                    ...d,
+                    xDate: luxon.DateTime.fromFormat(dateStr, 'd.M.yyyy H:mm:ss').toJSDate()
+                };
+            })
+            .filter(d => d.xDate && !isNaN(d.xDate.getTime()))
             .sort((a, b) => a.xDate - b.xDate);
 
         new Chart(ctx, {
+            type: 'line', // Globální typ grafu
             data: {
                 datasets: [
                     {
@@ -118,15 +122,13 @@
                             unit: 'day',
                             tooltipFormat: 'dd.MM.yyyy HH:mm',
                             displayFormats: {
-                                day: 'ccc d.M.', // Zobrazí např. "Po 20.1."
+                                day: 'ccc d.M.',
                                 hour: 'HH:mm'
                             }
-                        },
-                        title: { display: true, text: 'Den a čas měření' }
+                        }
                     },
                     y: { 
                         suggestedMin: 50,
-                        suggestedMax: 150,
                         title: { display: true, text: 'Hodnoty' }
                     }
                 },
@@ -136,8 +138,7 @@
                             sysHigh: { type: 'line', yMin: 130, yMax: 130, borderColor: 'rgba(217,48,37,0.2)', borderWidth: 2 },
                             diaHigh: { type: 'line', yMin: 80, yMax: 80, borderColor: 'rgba(26,115,232,0.2)', borderWidth: 2 }
                         }
-                    },
-                    tooltip: { mode: 'index', intersect: false }
+                    }
                 }
             }
         });
