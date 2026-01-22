@@ -12,14 +12,12 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 
     <style>
-        body { font-family: -apple-system, system-ui, sans-serif; margin: 0; background-color: #f0f2f5; padding: 20px; color: #1c1e21; }
-        .container { max-width: 1200px; margin: auto; background: white; padding: 25px; border-radius: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
-        header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; gap: 15px; flex-wrap: wrap; }
-        h1 { margin: 0; font-size: 1.6rem; color: #1a73e8; }
-        .btn-input { background: #1a73e8; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: 600; transition: background 0.2s; }
-        .btn-input:hover { background: #1557b0; }
-        #chart-wrapper { position: relative; height: 75vh; width: 100%; min-height: 400px; }
-        .loader { text-align: center; padding: 40px; font-style: italic; color: #65676b; }
+        body { font-family: sans-serif; margin: 0; background-color: #f0f2f5; padding: 20px; }
+        .container { max-width: 1200px; margin: auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+        header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .btn { background: #1a73e8; color: white; padding: 10px 20px; text-decoration: none; border-radius: 6px; font-weight: bold; }
+        #chart-wrapper { position: relative; height: 70vh; width: 100%; min-height: 400px; }
+        #loading-info { text-align: center; padding: 50px; font-size: 1.2rem; color: #666; }
     </style>
 </head>
 <body>
@@ -27,64 +25,57 @@
 <div class="container">
     <header>
         <h1>Deník krevního tlaku</h1>
-        <a href="https://forms.gle/J2LQf3o1JezrUJqi9" target="_blank" class="btn-input">Zapsat měření</a>
+        <a href="https://forms.gle/UEQjVrcUwoAUQ4EP7" target="_blank" id="form-link" class="btn">Zapsat měření</a>
     </header>
 
     <div id="chart-wrapper">
-        <div id="loading-msg" class="loader">Načítám čerstvá data z Google Tabulek...</div>
+        <div id="loading-info">Načítám data z Google Tabulky...</div>
         <canvas id="bpChart"></canvas>
     </div>
 </div>
 
 <script>
-    const MY_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQBkUqdwZyzKHPbroYVzqol6YEHW9qGg8cIXTs43Y-x6ypklE_PNZYmQrYCdZihqq9T09_t-GlZDGHt/pub?gid=110727992&single=true&output=csv'; // Nezapomeňte vložit svůj odkaz
+    // --- 1. SEM VLOŽTE SVŮJ ODKAZ (output=csv) ---
+    const MY_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQBkUqdwZyzKHPbroYVzqol6YEHW9qGg8cIXTs43Y-x6ypklE_PNZYmQrYCdZihqq9T09_t-GlZDGHt/pub?gid=110727992&single=true&output=csv';
+
+    // Pomocná funkce pro hledání sloupců v CSV (ignoruje diakritiku a velká písmena)
+    function getVal(row, keys) {
+        const foundKey = Object.keys(row).find(k => 
+            keys.some(kw => k.toLowerCase().includes(kw.toLowerCase()))
+        );
+        return row[foundKey];
+    }
 
     async function loadData() {
-        console.log("Start stahování...");
         Papa.parse(MY_CSV_URL, {
             download: true,
             header: true,
             dynamicTyping: true,
             skipEmptyLines: true,
             complete: function(results) {
-                console.log("Data stažena, počet řádků:", results.data.length);
-                if (results.data.length > 0) {
-                    // TOTO NÁM UKÁŽE, CO GOOGLE REÁLNĚ POSÍLÁ
-                    alert("První řádek dat: " + JSON.stringify(results.data[0]));
+                console.log("Stažená data:", results.data[0]); // Pro kontrolu v konzoli
+                if (results.data && results.data.length > 0) {
                     drawChart(results.data);
                 } else {
-                    alert("Chyba: Google poslal prázdnou tabulku!");
+                    document.getElementById('loading-info').innerText = "Tabulka je prázdná.";
                 }
             },
-            error: function(err) {
-                alert("Chyba při stahování CSV: " + err);
+            error: function() {
+                document.getElementById('loading-info').innerText = "Chyba při stahování dat.";
             }
         });
     }
 
-    function getValue(row, keywords) {
-        const key = Object.keys(row).find(k => 
-            keywords.some(kw => k.toLowerCase().includes(kw.toLowerCase()))
-        );
-        return row[key];
-    }
-
     function drawChart(rawData) {
+        const infoEl = document.getElementById('loading-info');
+        if (infoEl) infoEl.style.display = 'none'; // Schováme nápis, pokud existuje
+
         const ctx = document.getElementById('bpChart').getContext('2d');
         
-        // Filtrujeme řádky, které nemají datum nebo tlak
-        const validData = rawData.filter(d => getValue(d, ['date', 'čas']) && getValue(d, ['sys']));
-
-        if (validData.length === 0) {
-            alert("V tabulce jsou data, ale kód v nich nenašel sloupce pro 'datum' nebo 'systol'. Zkontrolujte záhlaví tabulky.");
-            return;
-        }
-
-        const data = validData.sort((a, b) => {
-            return new Date(getValue(a, ['date', 'čas'])) - new Date(getValue(b, ['date', 'čas']));
+        // Seřazení dat
+        const sortedData = rawData.filter(d => getVal(d, ['razítko', 'date', 'čas'])).sort((a, b) => {
+            return new Date(getVal(a, ['razítko', 'date', 'čas'])) - new Date(getVal(b, ['razítko', 'date', 'čas']));
         });
-
-        document.getElementById('msg').style.display = 'none';
 
         new Chart(ctx, {
             data: {
@@ -92,15 +83,25 @@
                     {
                         type: 'line',
                         label: 'Systolický',
-                        data: data.map(d => ({ x: getValue(d, ['date', 'čas']), y: getValue(d, ['sys']) })),
+                        data: sortedData.map(d => ({ x: getVal(d, ['razítko', 'date', 'čas']), y: getVal(d, ['systol']) })),
                         borderColor: '#d93025',
+                        backgroundColor: '#d93025',
                         tension: 0.3
                     },
                     {
                         type: 'line',
                         label: 'Diastolický',
-                        data: data.map(d => ({ x: getValue(d, ['date', 'čas']), y: getValue(d, ['dia']) })),
+                        data: sortedData.map(d => ({ x: getVal(d, ['razítko', 'date', 'čas']), y: getVal(d, ['diastol']) })),
                         borderColor: '#1a73e8',
+                        backgroundColor: '#1a73e8',
+                        tension: 0.3
+                    },
+                    {
+                        type: 'line',
+                        label: 'Tep',
+                        data: sortedData.map(d => ({ x: getVal(d, ['razítko', 'date', 'čas']), y: getVal(d, ['tep', 'pulse']) })),
+                        borderColor: '#188038',
+                        borderDash: [5, 5],
                         tension: 0.3
                     }
                 ]
@@ -109,8 +110,19 @@
                 responsive: true,
                 maintainAspectRatio: false,
                 scales: {
-                    x: { type: 'time', time: { unit: 'day' } },
+                    x: { 
+                        type: 'time', 
+                        time: { unit: 'day', displayFormats: { day: 'd.M.' } } 
+                    },
                     y: { suggestedMin: 40 }
+                },
+                plugins: {
+                    annotation: {
+                        annotations: {
+                            sysHigh: { type: 'line', yMin: 130, yMax: 130, borderColor: 'rgba(217, 48, 37, 0.2)', borderWidth: 2 },
+                            diaHigh: { type: 'line', yMin: 80, yMax: 80, borderColor: 'rgba(26, 115, 232, 0.2)', borderWidth: 2 }
+                        }
+                    }
                 }
             }
         });
@@ -118,6 +130,5 @@
 
     loadData();
 </script>
-
 </body>
 </html>
